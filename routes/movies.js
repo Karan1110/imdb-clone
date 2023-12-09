@@ -7,6 +7,7 @@ const moment = require("moment");
 const mongoose = require("mongoose");
 const express = require("express");
 const router = express.Router();
+const multer = require("multer");
 
 router.get("/", async (req, res) => {
   const movies = await Movie.find()
@@ -14,28 +15,54 @@ router.get("/", async (req, res) => {
     .sort("name");
   res.send(movies);
 });
+const storage = multer.diskStorage({
+  destination: "../videos",
+  filename: (req, file, cb) => {
+    const filename = `will be changed`
+    cb(null, filename)
+  },
+})
 
-router.post("/", [auth], async (req, res) => {
-  const { error } = validate(req.body);
-  if (error) return res.status(400).send(error.details[0].message);
+const upload = multer({ storage })
 
-  const genre = await Genre.findById(req.body.genreId);
-  if (!genre) return res.status(400).send("Invalid genre.");
-
-  const movie = new Movie({
-    title: req.body.title,
-    genre: {
-      _id: genre._id,
-      name: genre.name
+router.post(
+  "/",
+  [
+    auth,
+    (req, res, next) => {
+      storage.filename = (req, file, cb) => {
+        const filename = `${req.body.title}.${path.extname(file.originalname)}`
+        cb(null, filename)
+      }
+      next()
     },
-    numberInStock: req.body.numberInStock,
-    dailyRentalRate: req.body.dailyRentalRate,
-    publishDate: moment().toJSON()
-  });
-  await movie.save();
+    upload.single("video"),
+  ],
+  async (req, res) => {
+    const { error } = validate(req.body)
+    if (error) return res.status(400).send(error.details[0].message)
 
-  res.send(movie);
-});
+    const genre = await Genre.findById(req.body.genreId)
+    if (!genre) return res.status(400).send("Invalid genre.")
+
+    const movie = new Movie({
+      _id : mongoose.Types.ObjectId(),
+      title: req.body.title,
+      genre: {
+        _id: genre._id,
+        name: genre.name,
+      },
+      numberInStock: req.body.numberInStock,
+      dailyRentalRate: req.body.dailyRentalRate,
+      publishDate: moment().toJSON(),
+      video :`${req.body.title}.${path.extname(file.originalname)}`
+    });
+
+    await movie.save()
+    res.send(movie)
+  }
+)
+
 
 router.put("/:id", [auth], async (req, res) => {
   const { error } = validate(req.body);

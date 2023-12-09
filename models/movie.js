@@ -8,7 +8,8 @@ const Movie = mongoose.model('Movies', new mongoose.Schema({
     required: true,
     trim: true, 
     minlength: 5,
-    maxlength: 255
+    maxlength: 255,
+    unique : true
   },
   genre: { 
     type: genreSchema,  
@@ -25,6 +26,10 @@ const Movie = mongoose.model('Movies', new mongoose.Schema({
     required: true,
     min: 0,
     max: 255
+  },
+  video: {
+    type: String,
+    required : true
   }
 }));
 

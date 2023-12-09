@@ -1,46 +1,56 @@
-const { Rental, validate } = require("../models/rental");
-const { Movie } = require("../models/movie");
-const { Customer } = require("../models/customer");
-const auth = require("../middleware/auth");
-const mongoose = require("mongoose");
-const Fawn = require("fawn");
-const express = require("express");
-const router = express.Router();
+const { Rental, validate } = require("../models/rental")
+const { Movie } = require("../models/movie")
+const { Customer } = require("../models/customer")
+const auth = require("../middleware/auth")
+const mongoose = require("mongoose")
+const Fawn = require("fawn")
+const express = require("express")
+const router = express.Router()
 
-Fawn.init(mongoose);
+Fawn.init(`mongodb://localhost:27017/vidly`)
 
 router.get("/", auth, async (req, res) => {
-  const rentals = await Rental.find()
-    .select("-__v")
-    .sort("-dateOut");
-  res.send(rentals);
-});
+  const rentals = await Rental.find().select("-__v").sort("-dateOut")
+  res.send(rentals)
+})
 
 router.post("/", auth, async (req, res) => {
-  const { error } = validate(req.body);
-  if (error) return res.status(400).send(error.details[0].message);
+  const { error } = validate(req.body)
+  if (error) return res.status(400).send(error.details[0].message)
 
-  const customer = await Customer.findById(req.body.customerId);
-  if (!customer) return res.status(400).send("Invalid customer.");
+  const customer = await Customer.findById(req.body.customerId)
+  if (!customer) return res.status(400).send("Invalid customer.")
 
-  const movie = await Movie.findById(req.body.movieId);
-  if (!movie) return res.status(400).send("Invalid movie.");
+  const rentalCount = await Rental.countDocuments({
+    "customer._id": customer._id,
+  })
+
+  if (rentalCount < 5 && !customer.isGold) {
+    await Customer.updateOne({ _id: customer._id }, { $set: { isGold: true } })
+  }
+
+  const movie = await Movie.findById(req.body.movieId)
+  if (!movie) return res.status(400).send("Invalid movie.")
 
   if (movie.numberInStock === 0)
-    return res.status(400).send("Movie not in stock.");
+    return res.status(400).send("Movie not in stock.")
+
+  if (customer.isGold) {
+    movie.dailyRentalRate = movie.dailyRentalRate * 0.75 // Apply a 25% discount
+  }
 
   let rental = new Rental({
     customer: {
       _id: customer._id,
       name: customer.name,
-      phone: customer.phone
+      phone: customer.phone,
     },
     movie: {
       _id: movie._id,
       title: movie.title,
-      dailyRentalRate: movie.dailyRentalRate
-    }
-  });
+      dailyRentalRate: movie.dailyRentalRate,
+    },
+  })
 
   try {
     new Fawn.Task()
@@ -49,24 +59,25 @@ router.post("/", auth, async (req, res) => {
         "movies",
         { _id: movie._id },
         {
-          $inc: { numberInStock: -1 }
+          $inc: { numberInStock: -1 },
         }
       )
-      .run();
+      .run()
 
-    res.send(rental);
+    res.send(rental)
   } catch (ex) {
-    res.status(500).send("Something failed.");
+    console.error("Error during transaction:", ex)
+    res.status(500).send("Something failed.")
   }
 });
 
 router.get("/:id", [auth], async (req, res) => {
-  const rental = await Rental.findById(req.params.id).select("-__v");
+  const rental = await Rental.findById(req.params.id).select("-__v")
 
   if (!rental)
-    return res.status(404).send("The rental with the given ID was not found.");
+    return res.status(404).send("The rental with the given ID was not found.")
 
-  res.send(rental);
-});
+  res.send(rental)
+})
 
-module.exports = router;
+module.exports = router
